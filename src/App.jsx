@@ -1463,6 +1463,8 @@ const [rmAll, setRmAll] = useState(INIT_RM);
 const [loading, setLoading] = useState(true);
 const [syncing, setSyncing] = useState(false);
 const [online, setOnline] = useState(true);
+const [selectedKC, setSelectedKC] = useState("Semua KC");
+const [activeMenu, setActiveMenu] = useState("overview");
 
 // ── LOAD DATA DARI SUPABASE SAAT PERTAMA BUKA ──
 useEffect(() => {
@@ -1557,6 +1559,74 @@ const initSeedData = async () => {
     id: 'singleton',
     rm_all: INIT_RM,
   });
+};
+
+const savePTtoDB = async (pt) => {
+  setSyncing(true);
+  try {
+    await supabase.from('pt_nasabah').upsert({
+      id: pt.id,
+      nama: pt.nama,
+      kc: pt.kc,
+      sektor: pt.sektor,
+      kickoff: pt.kickoff,
+      relasi: pt.relasi,
+      covenant: pt.covenant,
+    });
+    setOnline(true);
+  } catch (err) {
+    console.error('Gagal simpan PT:', err);
+    setOnline(false);
+  } finally {
+    setSyncing(false);
+  }
+};
+
+const deletePTfromDB = async (ptId) => {
+  setSyncing(true);
+  try {
+    await supabase.from('pt_nasabah').delete().eq('id', ptId);
+    setOnline(true);
+  } catch (err) {
+    console.error('Gagal hapus PT:', err);
+    setOnline(false);
+  } finally {
+    setSyncing(false);
+  }
+};
+
+const saveMasterRef = async (divisi, produk, covenant) => {
+  setSyncing(true);
+  try {
+    await supabase.from('master_referensi').upsert({
+      id: 'singleton',
+      divisi_list: divisi,
+      produk_map: produk,
+      covenant_types: covenant,
+    });
+    setOnline(true);
+  } catch (err) {
+    console.error('Gagal simpan master referensi:', err);
+    setOnline(false);
+  } finally {
+    setSyncing(false);
+  }
+};
+
+const saveRMtoDB = async (rmData) => {
+  setSyncing(true);
+  try {
+    await supabase.from('rm_data').upsert({
+      id: 'singleton',
+      rm_all: rmData,
+    });
+    setOnline(true);
+  } catch (err) {
+    console.error('Gagal simpan RM:', err);
+    setOnline(false);
+  } finally {
+    setSyncing(false);
+  }
 };
 
   // Alert badge count

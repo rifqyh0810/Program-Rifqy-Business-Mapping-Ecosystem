@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
@@ -6,9 +6,8 @@ import {
 import {
   Home, Building2, Users, BarChart2, Bell, Settings,
   Plus, Edit2, Trash2, ChevronRight, ChevronDown, X,
-  CheckCircle, AlertCircle, Clock, AlertTriangle, Minus,
-  TrendingUp, DollarSign, Briefcase, Activity
-} from "lucide-react";
+  Activity, AlertTriangle, Clock, AlertCircle, DollarSign,
+  Briefcase, TrendingUp, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { supabase } from './supabase';
 
 // ─── UTILITY ────────────────────────────────────────────────────────────────

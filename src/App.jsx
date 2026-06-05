@@ -9,6 +9,7 @@ import {
   CheckCircle, AlertCircle, Clock, AlertTriangle, Minus,
   TrendingUp, DollarSign, Briefcase, Activity
 } from "lucide-react";
+import { supabase } from './supabase';
 
 // ─── UTILITY ────────────────────────────────────────────────────────────────
 const today = new Date();
@@ -899,18 +900,19 @@ function Ekosistem({ pts, selectedKC, divisiList, produkMap, rmAll, onPTsChange,
 
   const savePT = () => {
     const newPT = { id: uid(), ...ptF, kc: selectedKC === "Semua KC" ? KC_LIST[0] : selectedKC, relasi: [], covenant: [] };
-    onPTsChange([...pts, newPT]);
+    onPTsChange([...pts, newPT], newPT, false);
     setAddPT(false);
     setPtF({ nama: "", sektor: "Pertambangan", kickoff: fmt(today) });
   };
 
   const updatePT = (updated) => {
-    onPTsChange(pts.map(p => p.id === updated.id ? updated : p));
+    onPTsChange(pts.map(p => p.id === updated.id ? updated : p), updated, false);
     if (detailPT?.id === updated.id) setDetailPT(updated);
   };
 
   const delPT = (id) => {
-    onPTsChange(pts.filter(p => p.id !== id));
+    const ptToDelete = pts.find(p => p.id === id);
+    onPTsChange(pts.filter(p => p.id !== id), ptToDelete, true);
     setDelConfirm(null);
   };
 
@@ -1454,13 +1456,109 @@ function Pengaturan({ divisiList, setDivisiList, produkMap, setProdukMap, covena
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [activeMenu, setActiveMenu] = useState("overview");
-  const [selectedKC, setSelectedKC] = useState("KC Samarinda Gajah Mada");
-  const [pts, setPts] = useState(INIT_PT);
-  const [divisiList, setDivisiList] = useState(INIT_DIVISI);
-  const [produkMap, setProdukMap] = useState(INIT_PRODUK);
-  const [covenantTypes, setCovenantTypes] = useState(INIT_COVENANT_TYPES);
-  const [rmAll, setRmAll] = useState(INIT_RM);
+  const [pts, setPts] = useState([]);
+const [divisiList, setDivisiList] = useState(INIT_DIVISI);
+const [produkMap, setProdukMap] = useState(INIT_PRODUK);
+const [covenantTypes, setCovenantTypes] = useState(INIT_COVENANT_TYPES);
+const [rmAll, setRmAll] = useState(INIT_RM);
+const [loading, setLoading] = useState(true);
+const [syncing, setSyncing] = useState(false);
+const [online, setOnline] = useState(true);
+
+// ── LOAD DATA DARI SUPABASE SAAT PERTAMA BUKA ──
+useEffect(() => {
+  loadAllData();
+}, []);
+
+const loadAllData = async () => {
+  setLoading(true);
+  try {
+    // Load PT
+    const { data: ptData } = await supabase
+      .from('pt_nasabah')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (ptData && ptData.length > 0) {
+      setPts(ptData.map(row => ({
+        id: row.id,
+        nama: row.nama,
+        kc: row.kc,
+        sektor: row.sektor,
+        kickoff: row.kickoff,
+        relasi: row.relasi || [],
+        covenant: row.covenant || [],
+      })));
+    } else {
+      // Kalau database kosong, isi dengan data dummy awal
+      await initSeedData();
+    }
+
+    // Load master referensi
+    const { data: refData } = await supabase
+      .from('master_referensi')
+      .select('*')
+      .eq('id', 'singleton')
+      .single();
+
+    if (refData) {
+      setDivisiList(refData.divisi_list || INIT_DIVISI);
+      setProdukMap(refData.produk_map || INIT_PRODUK);
+      setCovenantTypes(refData.covenant_types || INIT_COVENANT_TYPES);
+    }
+
+    // Load RM
+    const { data: rmData } = await supabase
+      .from('rm_data')
+      .select('*')
+      .eq('id', 'singleton')
+      .single();
+
+    if (rmData) {
+      setRmAll(rmData.rm_all || INIT_RM);
+    }
+
+    setOnline(true);
+  } catch (err) {
+    console.error('Gagal load data:', err);
+    setOnline(false);
+    // Fallback ke data dummy jika offline
+    setPts(INIT_PT);
+  } finally {
+    setLoading(false);
+  }
+};
+
+// Seed data dummy ke database jika masih kosong
+const initSeedData = async () => {
+  // Insert semua PT dummy
+  for (const pt of INIT_PT) {
+    await supabase.from('pt_nasabah').upsert({
+      id: pt.id,
+      nama: pt.nama,
+      kc: pt.kc,
+      sektor: pt.sektor,
+      kickoff: pt.kickoff,
+      relasi: pt.relasi,
+      covenant: pt.covenant,
+    });
+  }
+  setPts(INIT_PT);
+
+  // Insert master referensi
+  await supabase.from('master_referensi').upsert({
+    id: 'singleton',
+    divisi_list: INIT_DIVISI,
+    produk_map: INIT_PRODUK,
+    covenant_types: INIT_COVENANT_TYPES,
+  });
+
+  // Insert RM
+  await supabase.from('rm_data').upsert({
+    id: 'singleton',
+    rm_all: INIT_RM,
+  });
+};
 
   // Alert badge count
   const alertCount = useMemo(() => {
@@ -1491,18 +1589,47 @@ export default function App() {
     switch (activeMenu) {
       case "overview": return <Overview pts={pts} selectedKC={selectedKC} />;
       case "ekosistem": return <Ekosistem pts={pts} selectedKC={selectedKC} divisiList={divisiList}
-        produkMap={produkMap} rmAll={rmAll} onPTsChange={setPts} covenantTypes={covenantTypes}
-        onAddCovenantType={(t) => setCovenantTypes(prev => prev.includes(t) ? prev : [...prev, t])} />;
-      case "rm": return <PerformaRM pts={pts} rmAll={rmAll} divisiList={divisiList} selectedKC={selectedKC} onRMChange={setRmAll} />;
+        produkMap={produkMap} rmAll={rmAll}
+        onPTsChange={async (newPts, changedPT, isDelete) => {
+          setPts(newPts);
+          if (isDelete && changedPT) await deletePTfromDB(changedPT.id);
+          else if (changedPT) await savePTtoDB(changedPT);
+        }}
+        covenantTypes={covenantTypes}
+        onAddCovenantType={async (t) => {
+          const updated = covenantTypes.includes(t) ? covenantTypes : [...covenantTypes, t];
+          setCovenantTypes(updated);
+          await saveMasterRef(divisiList, produkMap, updated);
+        }} />;
+      case "rm": return <PerformaRM pts={pts} rmAll={rmAll} divisiList={divisiList} selectedKC={selectedKC}
+        onRMChange={async (newRM) => {
+          setRmAll(newRM);
+          await saveRMtoDB(newRM);
+        }} />;
       case "nasabah": return <PerfomaNasabah pts={pts} selectedKC={selectedKC} />;
       case "alert": return <AlertCovenant pts={pts} selectedKC={selectedKC} />;
-      case "settings": return <Pengaturan divisiList={divisiList} setDivisiList={setDivisiList}
-        produkMap={produkMap} setProdukMap={setProdukMap}
-        covenantTypes={covenantTypes} setCovenantTypes={setCovenantTypes} />;
+      case "settings": return <Pengaturan
+        divisiList={divisiList}
+        setDivisiList={async (v) => { setDivisiList(v); await saveMasterRef(v, produkMap, covenantTypes); }}
+        produkMap={produkMap}
+        setProdukMap={async (v) => { setProdukMap(v); await saveMasterRef(divisiList, v, covenantTypes); }}
+        covenantTypes={covenantTypes}
+        setCovenantTypes={async (v) => { setCovenantTypes(v); await saveMasterRef(divisiList, produkMap, v); }} />;
       default: return null;
     }
   };
-
+if (loading) return (
+    <div className="flex h-screen items-center justify-center bg-gray-50">
+      <div className="text-center">
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4"
+          style={{ backgroundColor: "#003f88" }}>
+          <Activity size={24} className="text-white animate-pulse" />
+        </div>
+        <div className="text-gray-600 font-medium">Memuat data dari server...</div>
+        <div className="text-gray-400 text-sm mt-1">BRI Ecosystem Monitor</div>
+      </div>
+    </div>
+  );
   return (
     <div className="flex h-screen bg-gray-50 font-sans overflow-hidden" style={{ fontFamily: "'Segoe UI', sans-serif" }}>
       {/* Sidebar */}
@@ -1557,7 +1684,25 @@ export default function App() {
         {/* Top bar */}
         <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between shrink-0">
           <h1 className="font-bold text-gray-800">{menus.find(m => m.id === activeMenu)?.label}</h1>
-          <div className="text-xs text-gray-400">{new Date().toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
+          <div className="flex items-center gap-3">
+            {syncing && (
+              <div className="flex items-center gap-1 text-xs text-blue-500">
+                <RefreshCw size={12} className="animate-spin" /> Menyimpan...
+              </div>
+            )}
+            {online ? (
+              <div className="flex items-center gap-1 text-xs text-green-500">
+                <Wifi size={12} /> Online
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 text-xs text-red-500">
+                <WifiOff size={12} /> Offline
+              </div>
+            )}
+            <div className="text-xs text-gray-400">
+              {new Date().toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </div>
+          </div>
         </div>
 
         {/* Page */}
